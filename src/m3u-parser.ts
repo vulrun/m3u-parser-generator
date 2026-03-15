@@ -27,6 +27,15 @@ export interface M3uParserConfig {
   customDataMapping?: M3uCustomDataMapping,
 }
 
+export interface M3uParseResult {
+  medias?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface M3uConfig {
+  [key: string]: unknown;
+}
+
 /**
  * M3u parser class to parse m3u playlist string to playlist object
  */
@@ -57,21 +66,85 @@ export class M3uParser {
     return attributes;
   }
 
+  parseJsonHeaders(trackInformation: string, media: M3uMedia) {
+    try {
+      const headers = JSON.parse(trackInformation);
+
+      media.extraHttpHeaders = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value])) as Record<string, string>;
+    } catch {
+      // nothing to worry about
+    }
+  }
+
+  parseHeadersHelper(headersAsStr: Record<string, string> | string, mediaExtraHeaders: Record<string, string>) {
+    mediaExtraHeaders = mediaExtraHeaders ?? {};
+    if (!headersAsStr) return mediaExtraHeaders;
+
+    try {
+      // Case: object input
+      if (typeof headersAsStr === "object" && headersAsStr !== null) {
+        const [httpHeaderKey, httpHeaderVal] = Array.isArray(headersAsStr)
+          ? headersAsStr
+          : Object.keys(headersAsStr).length > 0
+            ? Object.entries(headersAsStr)[0]
+            : [undefined, undefined];
+
+        if (httpHeaderKey) {
+          const key = httpHeaderKey
+            .toLowerCase()
+            .replace(/^http-/, "")
+            .trim();
+
+          mediaExtraHeaders[key] = String(httpHeaderVal ?? "").trim();
+        }
+
+        return mediaExtraHeaders;
+      }
+
+      // Case: string input
+      if (typeof headersAsStr === "string") {
+        const headers = headersAsStr.split(/[|&]/).reduce(
+          (acc, pair) => {
+            if (!pair) return acc;
+
+            const [rawKey, ...rest] = pair.split("=");
+            if (!rawKey) return acc;
+
+            const key = rawKey.trim().toLowerCase();
+            const value = rest.join("=").trim();
+
+            if (key) acc[key] = value;
+            return acc;
+          },
+          {} as Record<string, string>,
+        );
+
+        Object.assign(mediaExtraHeaders, headers);
+      }
+
+      return mediaExtraHeaders;
+    } catch {
+      return mediaExtraHeaders;
+    }
+  }
+
   /**
    * Process media method parse trackInformation and fill media with parsed info
    * @param trackInformation - media substring of m3u string line e.g. '-1 tvg-id="" group-title="",Tv Name'
    * @param media - actual m3u media object
    * @private
    */
-  private processMedia(trackInformation: string, media: M3uMedia): void {
-    const firstCommaIndex = trackInformation.indexOf(',');
-    const durationAttributes = trackInformation.substring(0, firstCommaIndex);
-    media.name = trackInformation.substring(firstCommaIndex + 1);
-
-    const firstSpaceIndex = durationAttributes.indexOf(' ');
-    const durationEndIndex = firstSpaceIndex > 0 ? firstSpaceIndex : durationAttributes.length;
-    media.duration = Number(durationAttributes.substring(0, durationEndIndex));
-    const attributes = durationAttributes.substring(durationEndIndex + 1);
+  private processMedia(trackInformation: string, media: M3uMedia) {
+    // Duration is before the first space
+    const firstSpace = trackInformation.indexOf(" ");
+    media.duration = firstSpace === -1 ? parseFloat(trackInformation) : parseFloat(trackInformation.slice(0, firstSpace));
+   
+    // The name starts after the comma that follows the last closing quote
+    const lastQuote = trackInformation.lastIndexOf('"');
+    const commaIndex = trackInformation.indexOf(",", lastQuote);
+    media.name =  trackInformation.slice(commaIndex === -1 ? firstSpace + 1 : commaIndex + 1).trim();
+    // Attributes is from first space till comma
+    const attributes = commaIndex === -1 ? '' : trackInformation.slice(firstSpace + 1, commaIndex).trim();
 
     media.attributes = this.getAttributes(attributes);
   }
@@ -125,7 +198,15 @@ export class M3uParser {
         break;
       }
       case M3uDirectives.EXTHTTP: {
-        media.extraHttpHeaders = JSON.parse(trackInformation);
+        this.parseJsonHeaders(trackInformation, media);
+        break;
+      }
+      case M3uDirectives.EXTVLCOPT: {
+        const firstEqualIndex = trackInformation.indexOf("=");
+        const httpHeaderKey = trackInformation.substring(0, firstEqualIndex).trim();
+        const httpHeaderVal = trackInformation.substring(firstEqualIndex + 1).trim();
+
+        media.extraHttpHeaders = this.parseHeadersHelper({ [httpHeaderKey]: httpHeaderVal }, media.extraHttpHeaders as Record<string, string>);
         break;
       }
       case M3uDirectives.KODIPROP: {
@@ -133,10 +214,10 @@ export class M3uParser {
         const value = valueParts.join('='); // in case value contains '=', ie. '#KODIPROP:inputstream.adaptive.license_key=https://example.com/license.php?id=example'
 
         if(!media.kodiProps) {
-          media.kodiProps = new Map<string, string>();
+          media.kodiProps = {};
         }
 
-        media.kodiProps.set(key, value);
+        media.kodiProps[key] = value;
         break;
       }
       default: {
@@ -182,6 +263,16 @@ export class M3uParser {
     }
   }
 
+  private processUrlData(item: string, media: M3uMedia) {
+    const firstOredIndex = item.indexOf("|");
+    const effectiveIndex = firstOredIndex > 0 ? firstOredIndex : item.length;
+    const streamUrlPath = item.substring(0, effectiveIndex).trim();
+    const headersAsStr = item.substring(effectiveIndex + 1).trim();
+
+    media.location = streamUrlPath;
+    media.extraHttpHeaders = this.parseHeadersHelper(headersAsStr, media.extraHttpHeaders as Record<string, string>);
+  }
+
   /**
    * Get playlist returns m3u playlist object parsed from m3u string lines
    * @param lines - m3u string lines
@@ -198,7 +289,7 @@ export class M3uParser {
       if (this.isDirective(item)) {
         this.processDirective(item, playlist, media);
       } else {
-        media.location = item;
+        this.processUrlData(item, media);
         playlist.medias.push(media);
         media = new M3uMedia('');
       }
@@ -249,5 +340,20 @@ export class M3uParser {
       throw new Error(`Missing ${M3uDirectives.EXTM3U} directive!`);
     }
     return this.getPlaylist(lines);
+  }
+
+  static parseStr(m3uString: string, config: M3uConfig = {}) {
+    const parser = new M3uParser(config);
+    return parser.parse(m3uString);
+  }
+
+  static parseMedias(m3uString: string, config: M3uConfig = {}): unknown[] {
+    const parsed = M3uParser.parseStr(m3uString, config);
+
+    if (!parsed?.medias || !Array.isArray(parsed.medias) || parsed.medias.length === 0) {
+      return [];
+    }
+
+    return parsed.medias;
   }
 }

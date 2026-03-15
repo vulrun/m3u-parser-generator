@@ -14,6 +14,7 @@ export enum M3uDirectives {
   EXTGENRE = '#EXTGENRE',
   EXTATTRFROMURL = '#EXTATTRFROMURL',
   EXTHTTP = '#EXTHTTP',
+  EXTVLCOPT = '#EXTVLCOPT',
   KODIPROP = '#KODIPROP'
 }
 
@@ -140,12 +141,12 @@ export class M3uMedia {
   /**
    * Extra HTTP headers
    */
-  extraHttpHeaders?: unknown = undefined;
+  extraHttpHeaders?: Record<string, string> = {};
 
   /**
    * Kodi props
    */
-  kodiProps?: Map<string, string>;
+  kodiProps?: Record<string, string>;
 
   /**
    * Size of media in bytes.
@@ -201,6 +202,10 @@ export class M3uAttributes {
    * tvg-id attribute, widely used
    */
   'tvg-id'?: string;
+  /**
+   * tvg-chno attribute, widely used
+   */
+  'tvg-chno'?: string;
   /**
    * tvg-language attribute, widely used
    */

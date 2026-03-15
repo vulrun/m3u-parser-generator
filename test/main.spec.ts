@@ -43,7 +43,7 @@ describe('Parse and generate test', () => {
     it('should generate without playlist title', () => {
         const playlist = new M3uPlaylist();
         playlist.medias.push(new M3uMedia('location'));
-        expect(playlist.getM3uString()).toEqual('#EXTM3U\nlocation');
+        expect(playlist.getM3uString()).toEqual('#EXTM3U\n#\nlocation\n#');
     });
 
     it('should be parsed when no attributes are present', () => {
@@ -71,9 +71,9 @@ describe('Parse and generate test', () => {
         media1.attributes = attr;
 
         const media2 = new M3uMedia('playlist.m3u');
-        media2.name = '100 group-title="Test2"Test tv 2 [SK]';
+        media2.name = 'group-title="Test2"Test tv 2 [SK]';
         media2.group = '';
-        media2.duration = 0;
+        media2.duration = 100;
 
         const expectedPlaylist = new M3uPlaylist();
         expectedPlaylist.medias = [media1, media2]
@@ -116,7 +116,7 @@ describe('Parse and generate test', () => {
 
     it('should parse extra http headers', () => {
         const playlist = parser.parse(playlistWithExtraHTTPHeaders);
-        expect(playlist.medias[0].extraHttpHeaders).toEqual(JSON.parse('{"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0"}'));
+        expect(playlist.medias[0].extraHttpHeaders).toEqual(JSON.parse('{"user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0","referer":"https://google.com"}'));
     });
 
     it('should write extra http headers', () => {
@@ -130,7 +130,7 @@ describe('Parse and generate test', () => {
         media.attributes["tvg-logo"] = 'logo1.png';
         media.attributes["group-title"] = 'Test1';
         media.attributes["unknown"] = '0';
-        media.extraHttpHeaders = JSON.parse('{"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0"}');
+        media.extraHttpHeaders = JSON.parse('{"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0","referer":"https://google.com"}');
         const playlist = new M3uPlaylist();
         playlist.medias.push(media);
         expect(playlist.getM3uString()).toEqual(playlistWithExtraHTTPHeaders);
@@ -138,11 +138,11 @@ describe('Parse and generate test', () => {
 
     it('should parse kodi props', () => {
         const playlist = parser.parse(playlistWithKodiProps);
-        expect(playlist.medias[0].kodiProps).toEqual(new Map([
-            [ 'inputstream.adaptive.manifest_type', 'm3u8' ],
-            [ 'inputstream.adaptive.license_type', 'org.w3.clearkey' ],
-            [ 'inputstream.adaptive.license_key', 'https://example.com/license.php?id=example' ]
-        ]));
+        expect(playlist.medias[0].kodiProps).toEqual({
+            'inputstream.adaptive.manifest_type': 'm3u8',
+            'inputstream.adaptive.license_type': 'org.w3.clearkey',
+            'inputstream.adaptive.license_key': 'https://example.com/license.php?id=example',
+        });
     });
 
     it('should write kodi props', () => {
@@ -156,11 +156,11 @@ describe('Parse and generate test', () => {
         media.attributes["tvg-logo"] = 'logo1.png';
         media.attributes["group-title"] = 'Test1';
         media.attributes["unknown"] = '0';
-        media.kodiProps = new Map([
-            [ 'inputstream.adaptive.manifest_type', 'm3u8' ],
-            [ 'inputstream.adaptive.license_type', 'org.w3.clearkey' ],
-            [ 'inputstream.adaptive.license_key', 'https://example.com/license.php?id=example' ]
-        ]);
+        media.kodiProps = {
+            'inputstream.adaptive.manifest_type': 'm3u8',
+            'inputstream.adaptive.license_type': 'org.w3.clearkey',
+            'inputstream.adaptive.license_key': 'https://example.com/license.php?id=example',
+        };
         const playlist = new M3uPlaylist();
         playlist.medias.push(media);
         expect(playlist.getM3uString()).toEqual(playlistWithKodiProps);

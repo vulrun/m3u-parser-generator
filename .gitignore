@@ -7,3 +7,5 @@ docs
 
 # Local Netlify folder
 .netlify
+
+package-lock.json

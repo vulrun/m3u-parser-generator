@@ -20,8 +20,7 @@
   "exports": {
     ".": {
       "import": "./dist/m3u-parser-generator.js",
-      "require": "./dist/m3u-parser-generator.umd.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/m3u-parser-generator.umd.cjs"
     }
   },
   "files": [
